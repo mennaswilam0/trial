@@ -1,6 +1,3 @@
-print("=" * 70)
-print("FILE 1: calculator.py")
-print("=" * 70)
 
 CALCULATOR_PY = '''"""
 Simple Calculator Module
