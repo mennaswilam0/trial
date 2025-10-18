@@ -1,0 +1,90 @@
+print("\n" + "=" * 70)
+print("FILE 3: .travis.yml")
+print("=" * 70)
+
+TRAVIS_YML = '''# Travis CI Configuration for Python Project
+# This file tells Travis CI how to build and test your project
+
+language: python
+
+# Python versions to test against
+python:
+  - "3.8"
+  - "3.9"
+  - "3.10"
+  - "3.11"
+
+# Cache pip dependencies for faster builds
+cache:
+  pip: true
+  directories:
+    - $HOME/.cache/pip
+
+# Commands to install dependencies
+install:
+  - pip install --upgrade pip
+  - pip install pytest pytest-cov
+  - pip install -r requirements.txt
+
+# Commands to run tests
+script:
+  - pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
+
+# Commands to run after successful tests
+after_success:
+  - echo "All tests passed!"
+
+# Notifications (optional)
+notifications:
+  email:
+    recipients:
+      - your-email@example.com
+    on_success: change  # Send email only when status changes
+    on_failure: always  # Always send email on failure
+
+# Environment variables (optional)
+env:
+  global:
+    - PYTHONPATH="${PYTHONPATH}:${TRAVIS_BUILD_DIR}"
+
+# Matrix configuration for different test scenarios (optional)
+jobs:
+  include:
+    # Fast fail - stop if Python 3.11 fails
+    - python: "3.11"
+      env: FAST_FAIL=true
+    
+    # Linting job
+    - name: "Linting"
+      python: "3.11"
+      install:
+        - pip install flake8
+      script:
+        - flake8 calculator.py test_calculator.py --max-line-length=100
+    
+    # Coverage job
+    - name: "Coverage Report"
+      python: "3.11"
+      install:
+        - pip install pytest pytest-cov codecov
+      script:
+        - pytest --cov=calculator --cov-report=xml
+      after_success:
+        - codecov
+
+# Branches to build
+branches:
+  only:
+    - main
+    - master
+    - develop
+
+# Build stages (optional - for complex workflows)
+stages:
+  - name: test
+  - name: deploy
+    if: branch = main AND type != pull_request
+'''
+
+print(TRAVIS_YML)
+
