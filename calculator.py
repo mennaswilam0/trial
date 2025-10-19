@@ -12,16 +12,7 @@ class Calculator:
         return result
     
     def subtract(self, a, b):
-        """
-        Subtract b from a
         
-        Args:
-            a: Number to subtract from
-            b: Number to subtract
-        
-        Returns:
-            Difference of a and b
-        """
         result = a - b
         self.history.append(f"{a} - {b} = {result}")
         return result
