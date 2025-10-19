@@ -1,4 +1,4 @@
-name: Auto Create PR
+name: Auto Merge to Staging
 
 on:
   push:
@@ -31,56 +31,38 @@ jobs:
         run: |
           pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
 
-  create-pr:
+  auto-merge-to-staging:
     needs: test
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       
-      - name: Check if PR exists
-        id: check
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Merge to staging branch
         run: |
           BRANCH="${{ github.ref_name }}"
-          PR_EXISTS=$(gh pr list --head "$BRANCH" --base main --json number --jq 'length')
-          echo "exists=$PR_EXISTS" >> $GITHUB_OUTPUT
-          echo "PR exists: $PR_EXISTS"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Create Pull Request
-        if: steps.check.outputs.exists == '0'
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          echo "Creating PR for branch: $BRANCH"
           
-          gh pr create \
-            --title "Merge $BRANCH to main" \
-            --body "## Automated Pull Request
+          # Create staging branch if it doesn't exist
+          if ! git ls-remote --heads origin staging; then
+            git checkout -b staging
+            git push origin staging
+          fi
           
-          ✅ All tests passed!
+          # Fetch and merge
+          git fetch origin staging
+          git checkout staging
+          git merge --no-ff origin/$BRANCH -m "Auto-merge: $BRANCH → staging
+
+          ✅ Tests passed
+          🤖 Automated by GitHub Actions"
           
-          **Branch:** \`$BRANCH\`
-          **Author:** @${{ github.actor }}
+          git push origin staging
           
-          Please review and merge." \
-            --base main \
-            --head "$BRANCH" \
-            --label "automated"
-          
-          echo "✅ PR created successfully!"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Comment on existing PR
-        if: steps.check.outputs.exists != '0'
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
-          
-          gh pr comment $PR_NUMBER \
-            --body "🤖 New commits pushed! All tests still passing ✅"
-          
-          echo "✅ Updated PR #$PR_NUMBER"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "✅ Merged $BRANCH to staging!"
