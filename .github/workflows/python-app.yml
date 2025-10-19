@@ -1,6 +1,10 @@
-name: Calculator Tests
+name: Full Auto PR and Merge (Use with Caution!)
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'bugfix/**'
 
 jobs:
   test:
@@ -23,10 +27,49 @@ jobs:
           pip install pytest pytest-cov pytest-mock
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Run tests with pytest
+      - name: Run tests
         run: |
-          pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
+          pytest test_calc.py -v --cov=calculator --cov-report=term-missing
+
+  auto-pr-and-merge:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       
-      - name: Display test results
-        if: always()
-        run: echo "Tests completed for Python ${{ matrix.python-version }}"
+      - name: Create Pull Request
+        id: create-pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref_name }}
+          base: main
+          title: "Auto PR: Merge ${{ github.ref_name }} to main"
+          body: |
+            ## Automated Pull Request & Merge
+            
+            ✅ All tests passed
+            🤖 This PR will be automatically merged
+            
+            **Branch:** `${{ github.ref_name }}`
+            **Author:** @${{ github.actor }}
+          labels: automated
+      
+      - name: Wait for PR checks
+        run: sleep 30  # Wait for PR checks to register
+      
+      - name: Auto-approve PR
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.create-pr.outputs.pull-request-number }}
+      
+      - name: Auto-merge PR
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.create-pr.outputs.pull-request-number }}
+          merge-method: squash
