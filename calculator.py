@@ -6,21 +6,7 @@ class Calculator:
         self.history = []
     
     def add(self, a, b):
-        """
-        Add two numbers
-        
-        Args:
-            a: First number
-            b: Second number
-        
-        Returns:
-            Sum of a and b
-        
-        Example:
-            >>> calc = Calculator()
-            >>> calc.add(5, 3)
-            8
-        """
+      
         result = a + b
         self.history.append(f"{a} + {b} = {result}")
         return result
