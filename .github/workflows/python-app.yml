@@ -25,7 +25,7 @@ jobs:
       
       - name: Run tests with pytest
         run: |
-          pytest test_calc.py -v --cov=calculator --cov-report=term-missing
+          pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
       
       - name: Display test results
         if: always()
