@@ -1,4 +1,4 @@
-name: Full Auto PR and Merge (Use with Caution!)
+name: Auto Create PR
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.13"]
-
+    
     steps:
       - uses: actions/checkout@v5
       
@@ -31,45 +31,56 @@ jobs:
         run: |
           pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
 
-  auto-pr-and-merge:
+  create-pr:
     needs: test
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+      
+      - name: Check if PR exists
+        id: check
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          PR_EXISTS=$(gh pr list --head "$BRANCH" --base main --json number --jq 'length')
+          echo "exists=$PR_EXISTS" >> $GITHUB_OUTPUT
+          echo "PR exists: $PR_EXISTS"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Create Pull Request
-        id: create-pr
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref_name }}
-          base: main
-          title: "Auto PR: Merge ${{ github.ref_name }} to main"
-          body: |
-            ## Automated Pull Request & Merge
-            
-            ✅ All tests passed
-            🤖 This PR will be automatically merged
-            
-            **Branch:** `${{ github.ref_name }}`
-            **Author:** @${{ github.actor }}
-          labels: automated
+        if: steps.check.outputs.exists == '0'
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          echo "Creating PR for branch: $BRANCH"
+          
+          gh pr create \
+            --title "Merge $BRANCH to main" \
+            --body "## Automated Pull Request
+          
+          ✅ All tests passed!
+          
+          **Branch:** \`$BRANCH\`
+          **Author:** @${{ github.actor }}
+          
+          Please review and merge." \
+            --base main \
+            --head "$BRANCH" \
+            --label "automated"
+          
+          echo "✅ PR created successfully!"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Wait for PR checks
-        run: sleep 30  # Wait for PR checks to register
-      
-      - name: Auto-approve PR
-        uses: hmarr/auto-approve-action@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.create-pr.outputs.pull-request-number }}
-      
-      - name: Auto-merge PR
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.create-pr.outputs.pull-request-number }}
-          merge-method: squash
+      - name: Comment on existing PR
+        if: steps.check.outputs.exists != '0'
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
+          
+          gh pr comment $PR_NUMBER \
+            --body "🤖 New commits pushed! All tests still passing ✅"
+          
+          echo "✅ Updated PR #$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
