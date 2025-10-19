@@ -1,11 +1,4 @@
 
-CALCULATOR_PY = '''"""
-Simple Calculator Module
-
-A basic calculator with add, subtract, multiply, and divide operations.
-Used to demonstrate CI/CD with Travis CI.
-"""
-
 
 class Calculator:
     """Simple calculator class"""
@@ -172,6 +165,4 @@ if __name__ == "__main__":
     
     print(f"\\nAverage of [1,2,3,4,5]: {calculate_average([1,2,3,4,5])}")
     print(f"Is 17 prime? {is_prime(17)}")
-'''
 
-print(CALCULATOR_PY)
