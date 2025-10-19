@@ -3,7 +3,6 @@
 class Calculator:
     
     def __init__(self):
-        """Initialize calculator with history"""
         self.history = []
     
     def add(self, a, b):
