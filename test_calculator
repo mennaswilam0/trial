@@ -1,15 +1,4 @@
-print("\n" + "=" * 70)
-print("FILE 2: test_calculator.py")
-print("=" * 70)
 
-TEST_CALCULATOR_PY = '''"""
-Pytest Test Suite for Calculator Module
-
-Tests all calculator functionality with various test cases
-including edge cases and error handling.
-
-Run with: pytest test_calculator.py -v
-"""
 
 import pytest
 from calculator import Calculator, calculate_average, is_prime
@@ -334,6 +323,3 @@ class TestPerformance:
             calc.add(i, i+1)
         
         assert len(calc.get_history()) == 1000
-'''
-
-print(TEST_CALCULATOR_PY)
