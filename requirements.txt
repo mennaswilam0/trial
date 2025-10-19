@@ -1,12 +1,7 @@
-print("\n" + "=" * 70)
-print("FILE 4: requirements.txt")
-print("=" * 70)
 
-REQUIREMENTS_TXT = '''# Python Package Requirements
-# Install with: pip install -r requirements.txt
 
 pytest>=7.0.0
 pytest-cov>=4.0.0
-'''
+
 
 print(REQUIREMENTS_TXT)
