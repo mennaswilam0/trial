@@ -1,7 +1,6 @@
 
 
 class Calculator:
-    """Simple calculator class"""
     
     def __init__(self):
         """Initialize calculator with history"""
