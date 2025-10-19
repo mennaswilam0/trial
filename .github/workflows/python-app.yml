@@ -29,7 +29,7 @@ jobs:
       
       - name: Run tests
         run: |
-          pytest test_calc.py -v --cov=calculator --cov-report=term-missing
+          pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
 
   auto-pr-and-merge:
     needs: test
