@@ -65,15 +65,7 @@ def calculate_average(numbers):
 
 
 def is_prime(n):
-    """
-    Check if a number is prime
     
-    Args:
-        n: Number to check
-    
-    Returns:
-        True if prime, False otherwise
-    """
     if n < 2:
         return False
     if n == 2:
