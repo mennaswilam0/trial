@@ -47,18 +47,7 @@ class Calculator:
 
 
 def calculate_average(numbers):
-    """
-    Calculate average of a list of numbers
     
-    Args:
-        numbers: List of numbers
-    
-    Returns:
-        Average of the numbers
-    
-    Raises:
-        ValueError: If list is empty
-    """
     if not numbers:
         raise ValueError("Cannot calculate average of empty list")
     return sum(numbers) / len(numbers)
