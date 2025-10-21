@@ -1,5 +1,4 @@
-name: Auto Merge to Staging
-
+name: Test and Generate Reports
 on:
   push:
   pull_request:
@@ -22,45 +21,310 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-mock
+          pip install pytest pytest-cov pytest-mock pytest-html
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Run tests
+      - name: Run tests with coverage and HTML reports
         run: |
-          pytest test_calculator.py -v --cov=calculator --cov-report=term-missing
+          # Create reports directory
+          mkdir -p reports/coverage reports/test-results
+          
+          # Run tests with coverage and generate HTML reports
+          pytest test_calculator.py -v \
+            --cov=calculator \
+            --cov-report=html:reports/coverage \
+            --cov-report=xml:reports/coverage.xml \
+            --cov-report=term-missing \
+            --html=reports/test-results/report-py${{ matrix.python-version }}.html \
+            --self-contained-html \
+            --junitxml=reports/test-results/junit-py${{ matrix.python-version }}.xml
+      
+      - name: Upload test reports as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: test-reports-py${{ matrix.python-version }}
+          path: reports/
+          retention-days: 30
+      
+      - name: Upload coverage to Codecov (optional)
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'  # Only upload once
+        with:
+          file: reports/coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
 
-  auto-merge-to-staging:
+  # Generate combined report and deploy to GitHub Pages
+  deploy-reports:
     needs: test
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     
     steps:
       - uses: actions/checkout@v5
+      
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
+          path: downloaded-reports/
       
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
       
-      - name: Merge to staging branch
+      - name: Create comprehensive HTML dashboard
         run: |
-          BRANCH="${{ github.ref_name }}"
+          mkdir -p public
           
-          # Create staging branch if it doesn't exist
-          if ! git ls-remote --heads origin staging; then
-            git checkout -b staging
-            git push origin staging
-          fi
+          # Create main index.html with full styling
+          cat > public/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Test Reports - ${{ github.repository }}</title>
+              <style>
+                  body { 
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                      margin: 0; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                      min-height: 100vh;
+                  }
+                  .container { 
+                      max-width: 1200px; margin: 0 auto; background: white; 
+                      padding: 40px; border-radius: 12px; 
+                      box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+                  }
+                  h1 { 
+                      color: #2c3e50; font-size: 2.5em; margin-bottom: 10px;
+                      border-bottom: 4px solid #3498db; padding-bottom: 15px; 
+                  }
+                  h2 { 
+                      color: #34495e; margin-top: 40px; font-size: 1.8em;
+                      display: flex; align-items: center; gap: 10px;
+                  }
+                  .grid { 
+                      display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
+                      gap: 25px; margin: 25px 0; 
+                  }
+                  .card { 
+                      background: linear-gradient(145deg, #f8f9fa, #e9ecef); 
+                      padding: 25px; border-radius: 10px; 
+                      border-left: 5px solid #3498db; 
+                      transition: transform 0.3s ease, box-shadow 0.3s ease;
+                  }
+                  .card:hover { 
+                      transform: translateY(-5px); 
+                      box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
+                  }
+                  .card h3 { 
+                      margin-top: 0; color: #2c3e50; font-size: 1.3em;
+                      display: flex; align-items: center; gap: 8px;
+                  }
+                  .links { list-style: none; padding: 0; margin: 15px 0; }
+                  .links li { margin: 12px 0; }
+                  .links a { 
+                      text-decoration: none; color: #3498db; font-weight: 600;
+                      display: flex; align-items: center; gap: 8px;
+                      padding: 8px 12px; border-radius: 6px;
+                      transition: background-color 0.3s ease;
+                  }
+                  .links a:hover { 
+                      background-color: #ecf0f1; text-decoration: none; 
+                  }
+                  .meta { 
+                      background: linear-gradient(145deg, #e8f5e8, #d4edda); 
+                      padding: 20px; border-radius: 8px; margin: 25px 0;
+                      border-left: 4px solid #27ae60;
+                  }
+                  .badge { 
+                      display: inline-block; padding: 6px 12px; border-radius: 20px; 
+                      font-size: 13px; font-weight: bold; margin: 2px;
+                  }
+                  .badge.success { background: #d4edda; color: #155724; }
+                  .badge.info { background: #cce7ff; color: #004085; }
+                  .badge.warning { background: #fff3cd; color: #856404; }
+                  .stats { 
+                      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+                      gap: 15px; margin: 20px 0; 
+                  }
+                  .stat-box { 
+                      text-align: center; padding: 15px; background: #f8f9fa; 
+                      border-radius: 8px; border: 2px solid #e9ecef; 
+                  }
+                  .stat-number { font-size: 2em; font-weight: bold; color: #3498db; }
+                  .stat-label { color: #6c757d; font-size: 0.9em; margin-top: 5px; }
+                  .python-version { 
+                      background: linear-gradient(45deg, #306998, #ffd43b); 
+                      color: white; padding: 4px 8px; border-radius: 4px; 
+                      font-size: 0.9em; font-weight: bold;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🧪 Test Reports Dashboard</h1>
+                  
+                  <div class="meta">
+                      <strong>📁 Repository:</strong> ${{ github.repository }} <br>
+                      <strong>🌿 Branch:</strong> <span class="badge info">${{ github.ref_name }}</span> <br>
+                      <strong>📝 Commit:</strong> <code>${{ github.sha }}</code> <br>
+                      <strong>⏰ Generated:</strong> $(date -u +"%Y-%m-%d %H:%M:%S UTC") <br>
+                      <strong>🔗 Workflow:</strong> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="color: #155724;">View Run #${{ github.run_id }}</a>
+                  </div>
           
-          # Fetch and merge
-          git fetch origin staging
-          git checkout staging
-          git merge --no-ff origin/$BRANCH -m "Auto-merge: $BRANCH → staging
+                  <div class="stats">
+                      <div class="stat-box">
+                          <div class="stat-number" id="python-count">0</div>
+                          <div class="stat-label">Python Versions</div>
+                      </div>
+                      <div class="stat-box">
+                          <div class="stat-number" id="test-count">✅</div>
+                          <div class="stat-label">Tests Status</div>
+                      </div>
+                      <div class="stat-box">
+                          <div class="stat-number">📊</div>
+                          <div class="stat-label">Coverage Reports</div>
+                      </div>
+                  </div>
+          
+                  <h2>📊 Coverage Reports</h2>
+                  <div class="grid" id="coverage-grid">
+          EOF
+          
+          # Copy coverage reports and generate cards
+          python_versions=()
+          for dir in downloaded-reports/test-reports-py*/; do
+              if [ -d "$dir" ]; then
+                  py_version=$(basename "$dir" | sed 's/test-reports-py//')
+                  python_versions+=("$py_version")
+                  if [ -d "$dir/reports/coverage" ]; then
+                      cp -r "$dir/reports/coverage" "public/coverage-py${py_version}"
+                      cat >> public/index.html << EOF
+                      <div class="card">
+                          <h3><span class="python-version">Python ${py_version}</span> Coverage</h3>
+                          <ul class="links">
+                              <li><a href="coverage-py${py_version}/index.html">📈 View Coverage Report</a></li>
+                              <li><a href="coverage-py${py_version}/index.html">📋 Line-by-line Analysis</a></li>
+                          </ul>
+                      </div>
+          EOF
+                  fi
+              fi
+          done
+          
+          cat >> public/index.html << 'EOF'
+                  </div>
+          
+                  <h2>🧪 Test Results</h2>
+                  <div class="grid" id="test-grid">
+          EOF
+          
+          # Copy test reports and generate cards
+          for dir in downloaded-reports/test-reports-py*/; do
+              if [ -d "$dir" ]; then
+                  py_version=$(basename "$dir" | sed 's/test-reports-py//')
+                  if [ -f "$dir/reports/test-results/report-py${py_version}.html" ]; then
+                      cp "$dir/reports/test-results/report-py${py_version}.html" "public/"
+                      cat >> public/index.html << EOF
+                      <div class="card">
+                          <h3><span class="python-version">Python ${py_version}</span> Tests</h3>
+                          <ul class="links">
+                              <li><a href="report-py${py_version}.html">🧪 Test Results</a></li>
+                              <li><a href="report-py${py_version}.html">⏱️ Performance Metrics</a></li>
+                          </ul>
+                      </div>
+          EOF
+                  fi
+              fi
+          done
+          
+          cat >> public/index.html << EOF
+                  </div>
+          
+                  <h2>📋 Additional Resources</h2>
+                  <div class="grid">
+                      <div class="card">
+                          <h3>🔗 GitHub Actions</h3>
+                          <ul class="links">
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">🏃 Current Workflow Run</a></li>
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions">📋 All Workflow Runs</a></li>
+                          </ul>
+                      </div>
+                      <div class="card">
+                          <h3>📦 Artifacts</h3>
+                          <ul class="links">
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">⬇️ Download Raw Reports</a></li>
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}">📁 Repository</a></li>
+                          </ul>
+                      </div>
+                  </div>
+          
+                  <script>
+                      // Update stats
+                      document.getElementById('python-count').textContent = '${#python_versions[@]}';
+                  </script>
+              </div>
+          </body>
+          </html>
+          EOF
+      
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public/
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
-          ✅ Tests passed
-          🤖 Automated by GitHub Actions"
-          
-          git push origin staging
-          
-          echo "✅ Merged $BRANCH to staging!"
+  # Optional: Post results as PR comment
+  comment-pr:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Download test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: test-reports-py3.11  # Use one version for summary
+          path: reports/
+      
+      - name: Parse test results and post comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // You can parse the JUnit XML or coverage XML here
+            // and create a nice summary comment on the PR
+            
+            const comment = `
+            ## 🧪 Test Results Summary
+            
+            **Status:** Tests completed for all Python versions ✅
+            
+            **Coverage Report:** Available in workflow artifacts
+            
+            **Details:** [View full test run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            ---
+            *This comment was automatically generated by GitHub Actions*
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
