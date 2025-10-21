@@ -29,6 +29,8 @@ jobs:
           # Create reports directory
           mkdir -p test-reports/
           
+          echo "🧪 Running tests for Python ${{ matrix.python-version }}..."
+          
           # Run tests with HTML report showing passed/failed tests
           pytest test_calculator.py -v \
             --html=test-reports/test-report-py${{ matrix.python-version }}.html \
@@ -36,7 +38,19 @@ jobs:
             --cov=calculator \
             --cov-report=html:test-reports/coverage-py${{ matrix.python-version }} \
             --cov-report=term-missing \
-            --junitxml=test-reports/junit-py${{ matrix.python-version }}.xml
+            --junitxml=test-reports/junit-py${{ matrix.python-version }}.xml || true
+          
+          echo "📁 Files generated:"
+          ls -la test-reports/
+          
+          echo "🔍 Checking if HTML report was created:"
+          if [ -f "test-reports/test-report-py${{ matrix.python-version }}.html" ]; then
+              echo "✅ HTML report exists and is $(stat -f%z test-reports/test-report-py${{ matrix.python-version }}.html 2>/dev/null || stat -c%s test-reports/test-report-py${{ matrix.python-version }}.html) bytes"
+          else
+              echo "❌ HTML report missing!"
+              echo "Available files:"
+              find test-reports/ -name "*.html" || echo "No HTML files found"
+          fi
       
       - name: Upload reports as artifacts
         uses: actions/upload-artifact@v4
@@ -66,36 +80,93 @@ jobs:
         with:
           path: downloaded-reports/
       
-      - name: Organize test reports in repository
+      - name: Debug and organize test reports
         run: |
+          echo "🔍 Debugging: Let's see what we downloaded..."
+          echo "Contents of downloaded-reports/:"
+          ls -la downloaded-reports/ || echo "No downloaded-reports directory"
+          
+          echo ""
+          echo "Looking inside each artifact directory:"
+          for dir in downloaded-reports/*/; do
+              if [ -d "$dir" ]; then
+                  echo "📁 Directory: $dir"
+                  ls -la "$dir" || echo "Cannot list $dir"
+                  echo "  Looking deeper:"
+                  find "$dir" -name "*.html" -o -name "*.xml" | head -10
+                  echo "---"
+              fi
+          done
+          
           # Create/clear test reports directory in repo
           mkdir -p test-results/
           rm -rf test-results/*
           
-          # Copy all HTML test reports
+          # Copy all test files with better error handling
+          echo ""
+          echo "🔄 Starting to copy files..."
+          
           for dir in downloaded-reports/test-reports-py*/; do
               if [ -d "$dir" ]; then
                   py_version=$(basename "$dir" | sed 's/test-reports-py//')
+                  echo "Processing Python ${py_version}..."
                   
-                  # Copy the HTML test report (shows passed/failed tests)
-                  if [ -f "$dir/test-reports/test-report-py${py_version}.html" ]; then
-                      cp "$dir/test-reports/test-report-py${py_version}.html" "test-results/"
-                      echo "✅ Copied test report for Python ${py_version}"
+                  # Debug: show what's in this specific directory
+                  echo "  Contents of $dir:"
+                  find "$dir" -type f | head -20
+                  
+                  # Try to find and copy the HTML test report
+                  html_file=$(find "$dir" -name "test-report-py${py_version}.html" | head -1)
+                  if [ -n "$html_file" ] && [ -f "$html_file" ]; then
+                      cp "$html_file" "test-results/"
+                      echo "  ✅ Copied HTML report: $html_file"
+                  else
+                      echo "  ❌ HTML report not found for Python ${py_version}"
+                      # Try alternative names
+                      alt_html=$(find "$dir" -name "*.html" | grep -v coverage | head -1)
+                      if [ -n "$alt_html" ]; then
+                          cp "$alt_html" "test-results/test-report-py${py_version}.html"
+                          echo "  ✅ Copied alternative HTML: $alt_html"
+                      fi
                   fi
                   
-                  # Copy coverage HTML reports
-                  if [ -d "$dir/test-reports/coverage-py${py_version}" ]; then
-                      cp -r "$dir/test-reports/coverage-py${py_version}" "test-results/"
-                      echo "✅ Copied coverage report for Python ${py_version}"
+                  # Try to find and copy coverage directory
+                  coverage_dir=$(find "$dir" -name "coverage-py${py_version}" -type d | head -1)
+                  if [ -n "$coverage_dir" ] && [ -d "$coverage_dir" ]; then
+                      cp -r "$coverage_dir" "test-results/"
+                      echo "  ✅ Copied coverage directory: $coverage_dir"
+                  else
+                      echo "  ❌ Coverage directory not found for Python ${py_version}"
+                      # Try alternative coverage directories
+                      alt_coverage=$(find "$dir" -name "*coverage*" -type d | head -1)
+                      if [ -n "$alt_coverage" ]; then
+                          cp -r "$alt_coverage" "test-results/coverage-py${py_version}"
+                          echo "  ✅ Copied alternative coverage: $alt_coverage"
+                      fi
                   fi
                   
-                  # Copy JUnit XML (for programmatic access)
-                  if [ -f "$dir/test-reports/junit-py${py_version}.xml" ]; then
-                      cp "$dir/test-reports/junit-py${py_version}.xml" "test-results/"
-                      echo "✅ Copied JUnit XML for Python ${py_version}"
+                  # Try to find and copy JUnit XML
+                  junit_file=$(find "$dir" -name "junit-py${py_version}.xml" | head -1)
+                  if [ -n "$junit_file" ] && [ -f "$junit_file" ]; then
+                      cp "$junit_file" "test-results/"
+                      echo "  ✅ Copied JUnit XML: $junit_file"
+                  else
+                      # Try alternative XML files
+                      alt_xml=$(find "$dir" -name "*.xml" | head -1)
+                      if [ -n "$alt_xml" ]; then
+                          cp "$alt_xml" "test-results/junit-py${py_version}.xml"
+                          echo "  ✅ Copied alternative XML: $alt_xml"
+                      else
+                          echo "  ❌ No XML files found for Python ${py_version}"
+                      fi
                   fi
+                  
+                  echo ""
               fi
           done
+          
+          echo "🎯 Final result - what's in test-results/:"
+          ls -la test-results/ || echo "test-results directory is empty or doesn't exist"
       
       - name: Create simple index file
         run: |
