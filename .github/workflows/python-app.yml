@@ -24,37 +24,36 @@ jobs:
           pip install pytest pytest-cov pytest-mock pytest-html
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Run tests with coverage and HTML reports
+      - name: Run tests and generate HTML reports
         run: |
           # Create reports directory
-          mkdir -p reports/coverage reports/test-results
+          mkdir -p test-reports/
           
-          # Run tests with coverage and generate HTML reports
+          # Run tests with HTML report showing passed/failed tests
           pytest test_calculator.py -v \
-            --cov=calculator \
-            --cov-report=html:reports/coverage \
-            --cov-report=xml:reports/coverage.xml \
-            --cov-report=term-missing \
-            --html=reports/test-results/report-py${{ matrix.python-version }}.html \
+            --html=test-reports/test-report-py${{ matrix.python-version }}.html \
             --self-contained-html \
-            --junitxml=reports/test-results/junit-py${{ matrix.python-version }}.xml
+            --cov=calculator \
+            --cov-report=html:test-reports/coverage-py${{ matrix.python-version }} \
+            --cov-report=term-missing \
+            --junitxml=test-reports/junit-py${{ matrix.python-version }}.xml
       
-      - name: Upload test reports as artifacts (backup)
+      - name: Upload reports as artifacts
         uses: actions/upload-artifact@v4
         if: always()  # Upload even if tests fail
         with:
           name: test-reports-py${{ matrix.python-version }}
-          path: reports/
-          retention-days: 7  # Shorter retention since we're committing to repo
+          path: test-reports/
+          retention-days: 30
 
-  # Generate combined HTML dashboard and commit to repository
-  commit-reports:
+  # Commit actual test result HTML files to repository
+  commit-test-reports:
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
     
     permissions:
-      contents: write  # Need write permission to commit
+      contents: write
     
     steps:
       - uses: actions/checkout@v5
@@ -67,267 +66,143 @@ jobs:
         with:
           path: downloaded-reports/
       
-      - name: Create reports directory structure
+      - name: Organize test reports in repository
         run: |
-          # Create permanent reports directory in repo
-          mkdir -p docs/test-reports/coverage
-          mkdir -p docs/test-reports/test-results
+          # Create/clear test reports directory in repo
+          mkdir -p test-results/
+          rm -rf test-results/*
           
-          # Clear old reports
-          rm -rf docs/test-reports/coverage/*
-          rm -rf docs/test-reports/test-results/*
-      
-      - name: Copy and organize reports
-        run: |
-          # Copy coverage reports
+          # Copy all HTML test reports
           for dir in downloaded-reports/test-reports-py*/; do
               if [ -d "$dir" ]; then
                   py_version=$(basename "$dir" | sed 's/test-reports-py//')
                   
-                  # Copy coverage reports
-                  if [ -d "$dir/reports/coverage" ]; then
-                      cp -r "$dir/reports/coverage" "docs/test-reports/coverage/py${py_version}"
+                  # Copy the HTML test report (shows passed/failed tests)
+                  if [ -f "$dir/test-reports/test-report-py${py_version}.html" ]; then
+                      cp "$dir/test-reports/test-report-py${py_version}.html" "test-results/"
+                      echo "✅ Copied test report for Python ${py_version}"
                   fi
                   
-                  # Copy test results
-                  if [ -f "$dir/reports/test-results/report-py${py_version}.html" ]; then
-                      cp "$dir/reports/test-results/report-py${py_version}.html" "docs/test-reports/test-results/"
+                  # Copy coverage HTML reports
+                  if [ -d "$dir/test-reports/coverage-py${py_version}" ]; then
+                      cp -r "$dir/test-reports/coverage-py${py_version}" "test-results/"
+                      echo "✅ Copied coverage report for Python ${py_version}"
+                  fi
+                  
+                  # Copy JUnit XML (for programmatic access)
+                  if [ -f "$dir/test-reports/junit-py${py_version}.xml" ]; then
+                      cp "$dir/test-reports/junit-py${py_version}.xml" "test-results/"
+                      echo "✅ Copied JUnit XML for Python ${py_version}"
                   fi
               fi
           done
       
-      - name: Create comprehensive HTML dashboard
+      - name: Create simple index file
         run: |
-          # Create main index.html in docs/test-reports/
-          cat > docs/test-reports/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Test Reports - ${{ github.repository }}</title>
-              <style>
-                  body { 
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                      margin: 0; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                      min-height: 100vh;
-                  }
-                  .container { 
-                      max-width: 1200px; margin: 0 auto; background: white; 
-                      padding: 40px; border-radius: 12px; 
-                      box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
-                  }
-                  h1 { 
-                      color: #2c3e50; font-size: 2.5em; margin-bottom: 10px;
-                      border-bottom: 4px solid #3498db; padding-bottom: 15px; 
-                  }
-                  h2 { 
-                      color: #34495e; margin-top: 40px; font-size: 1.8em;
-                      display: flex; align-items: center; gap: 10px;
-                  }
-                  .grid { 
-                      display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-                      gap: 25px; margin: 25px 0; 
-                  }
-                  .card { 
-                      background: linear-gradient(145deg, #f8f9fa, #e9ecef); 
-                      padding: 25px; border-radius: 10px; 
-                      border-left: 5px solid #3498db; 
-                      transition: transform 0.3s ease, box-shadow 0.3s ease;
-                  }
-                  .card:hover { 
-                      transform: translateY(-5px); 
-                      box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
-                  }
-                  .card h3 { 
-                      margin-top: 0; color: #2c3e50; font-size: 1.3em;
-                      display: flex; align-items: center; gap: 8px;
-                  }
-                  .links { list-style: none; padding: 0; margin: 15px 0; }
-                  .links li { margin: 12px 0; }
-                  .links a { 
-                      text-decoration: none; color: #3498db; font-weight: 600;
-                      display: flex; align-items: center; gap: 8px;
-                      padding: 8px 12px; border-radius: 6px;
-                      transition: background-color 0.3s ease;
-                  }
-                  .links a:hover { 
-                      background-color: #ecf0f1; text-decoration: none; 
-                  }
-                  .meta { 
-                      background: linear-gradient(145deg, #e8f5e8, #d4edda); 
-                      padding: 20px; border-radius: 8px; margin: 25px 0;
-                      border-left: 4px solid #27ae60;
-                  }
-                  .badge { 
-                      display: inline-block; padding: 6px 12px; border-radius: 20px; 
-                      font-size: 13px; font-weight: bold; margin: 2px;
-                  }
-                  .badge.success { background: #d4edda; color: #155724; }
-                  .badge.info { background: #cce7ff; color: #004085; }
-                  .python-version { 
-                      background: linear-gradient(45deg, #306998, #ffd43b); 
-                      color: white; padding: 4px 8px; border-radius: 4px; 
-                      font-size: 0.9em; font-weight: bold;
-                  }
-                  .file-tree {
-                      background: #f8f9fa; padding: 15px; border-radius: 6px;
-                      font-family: 'Courier New', monospace; font-size: 0.9em;
-                      margin: 15px 0;
-                  }
-              </style>
-          </head>
-          <body>
-              <div class="container">
-                  <h1>🧪 Test Reports Dashboard</h1>
-                  
-                  <div class="meta">
-                      <strong>📁 Repository:</strong> ${{ github.repository }} <br>
-                      <strong>🌿 Branch:</strong> <span class="badge info">${{ github.ref_name }}</span> <br>
-                      <strong>📝 Commit:</strong> <code>${{ github.sha }}</code> <br>
-                      <strong>⏰ Generated:</strong> $(date -u +"%Y-%m-%d %H:%M:%S UTC") <br>
-                      <strong>🔗 Workflow:</strong> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="color: #155724;">View Run #${{ github.run_id }}</a>
-                  </div>
-
-                  <div class="file-tree">
-                      <strong>📂 Reports Location in Repository:</strong><br>
-                      docs/test-reports/<br>
-                      ├── index.html (this file)<br>
-                      ├── coverage/<br>
-                      │   ├── py3.9/index.html<br>
-                      │   ├── py3.10/index.html<br>
-                      │   ├── py3.11/index.html<br>
-                      │   └── py3.13/index.html<br>
-                      └── test-results/<br>
-                          ├── report-py3.9.html<br>
-                          ├── report-py3.10.html<br>
-                          ├── report-py3.11.html<br>
-                          └── report-py3.13.html
-                  </div>
+          cat > test-results/README.md << 'EOF'
+          # Test Results
           
-                  <h2>📊 Coverage Reports</h2>
-                  <div class="grid">
+          This directory contains test reports generated automatically by GitHub Actions.
+          
+          ## 🧪 Test Reports (Pass/Fail Details)
+          
+          These HTML files show which tests passed or failed:
+          
           EOF
           
-          # Add coverage cards for each Python version
-          for dir in docs/test-reports/coverage/py*/; do
-              if [ -d "$dir" ]; then
-                  py_version=$(basename "$dir" | sed 's/py//')
-                  cat >> docs/test-reports/index.html << EOF
-                  <div class="card">
-                      <h3><span class="python-version">Python ${py_version}</span> Coverage</h3>
-                      <ul class="links">
-                          <li><a href="coverage/py${py_version}/index.html">📈 View Coverage Report</a></li>
-                          <li><a href="coverage/py${py_version}/index.html">📋 Line-by-line Analysis</a></li>
-                      </ul>
-                  </div>
-          EOF
-              fi
-          done
-          
-          cat >> docs/test-reports/index.html << 'EOF'
-                  </div>
-          
-                  <h2>🧪 Test Results</h2>
-                  <div class="grid">
-          EOF
-          
-          # Add test result cards for each Python version
-          for file in docs/test-reports/test-results/report-py*.html; do
+          # Add links to test reports
+          for file in test-results/test-report-py*.html; do
               if [ -f "$file" ]; then
-                  py_version=$(basename "$file" | sed 's/report-py\([0-9.]*\)\.html/\1/')
-                  cat >> docs/test-reports/index.html << EOF
-                  <div class="card">
-                      <h3><span class="python-version">Python ${py_version}</span> Tests</h3>
-                      <ul class="links">
-                          <li><a href="test-results/$(basename "$file")">🧪 Test Results</a></li>
-                          <li><a href="test-results/$(basename "$file")">⏱️ Performance Metrics</a></li>
-                      </ul>
-                  </div>
-          EOF
+                  filename=$(basename "$file")
+                  py_version=$(echo "$filename" | sed 's/test-report-py\([0-9.]*\)\.html/\1/')
+                  echo "- [Python ${py_version} Test Results](./$filename)" >> test-results/README.md
               fi
           done
           
-          cat >> docs/test-reports/index.html << EOF
-                  </div>
+          cat >> test-results/README.md << 'EOF'
           
-                  <h2>📋 Quick Access</h2>
-                  <div class="grid">
-                      <div class="card">
-                          <h3>🔗 Repository Links</h3>
-                          <ul class="links">
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">🏃 Current Workflow</a></li>
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}/docs/test-reports">📁 Browse Reports in Repo</a></li>
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}">🏠 Repository Home</a></li>
-                          </ul>
-                      </div>
-                      <div class="card">
-                          <h3>📖 How to Use</h3>
-                          <ul class="links">
-                              <li>🔍 Click any report above to view details</li>
-                              <li>📊 Coverage shows which code is tested</li>
-                              <li>🧪 Test results show pass/fail status</li>
-                              <li>🔄 Reports update automatically on push</li>
-                          </ul>
-                      </div>
-                  </div>
-              </div>
-          </body>
-          </html>
+          ## 📊 Coverage Reports
+          
+          These show which lines of code are covered by tests:
+          
+          EOF
+          
+          # Add links to coverage reports
+          for dir in test-results/coverage-py*/; do
+              if [ -d "$dir" ]; then
+                  dirname=$(basename "$dir")
+                  py_version=$(echo "$dirname" | sed 's/coverage-py//')
+                  echo "- [Python ${py_version} Coverage Report](./$dirname/index.html)" >> test-results/README.md
+              fi
+          done
+          
+          cat >> test-results/README.md << EOF
+          
+          ## 📋 Raw Data (XML)
+          
+          JUnit XML files for programmatic access:
+          
+          EOF
+          
+          # Add links to XML files
+          for file in test-results/junit-py*.xml; do
+              if [ -f "$file" ]; then
+                  filename=$(basename "$file")
+                  py_version=$(echo "$filename" | sed 's/junit-py\([0-9.]*\)\.xml/\1/')
+                  echo "- [Python ${py_version} JUnit XML](./$filename)" >> test-results/README.md
+              fi
+          done
+          
+          cat >> test-results/README.md << EOF
+          
+          ---
+          
+          **Last Updated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")  
+          **From Commit**: \`${{ github.sha }}\`  
+          **Branch**: \`${{ github.ref_name }}\`  
+          **Workflow**: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           EOF
       
-      - name: Create README for reports directory
+      - name: List what we're about to commit
         run: |
-          cat > docs/test-reports/README.md << 'EOF'
-          # Test Reports
-          
-          This directory contains automatically generated test reports.
-          
-          ## 📁 Structure
-          
-          - `index.html` - Main dashboard with links to all reports
-          - `coverage/` - Coverage reports for each Python version
-          - `test-results/` - Detailed test results for each Python version
-          
-          ## 🔍 How to View
-          
-          1. **Online**: Click on any `.html` file in GitHub to view
-          2. **Local**: Clone the repo and open `docs/test-reports/index.html` in your browser
-          
-          ## 🔄 Updates
-          
-          These reports are automatically updated on every push to main/staging branches.
-          
-          **Last Updated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          **Generated by**: [GitHub Actions Workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          EOF
+          echo "📁 Files being committed to test-results/:"
+          ls -la test-results/
+          echo ""
+          echo "📄 Test report files:"
+          ls -la test-results/*.html 2>/dev/null || echo "No HTML files found"
+          echo ""
+          echo "📊 Coverage directories:"
+          ls -d test-results/coverage-py*/ 2>/dev/null || echo "No coverage directories found"
       
-      - name: Commit and push reports
+      - name: Commit test reports
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Add all report files
-          git add docs/test-reports/
+          # Add all test result files
+          git add test-results/
           
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "📊 Update test reports
+            git commit -m "🧪 Update test reports
             
-            - Generated from commit ${{ github.sha }}
-            - Branch: ${{ github.ref_name }}
-            - Workflow: ${{ github.run_id }}
-            - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            Test results for commit ${{ github.sha }}
             
-            🧪 Test coverage and results available at docs/test-reports/index.html"
+            Files updated:
+            $(ls test-results/*.html 2>/dev/null | sed 's/test-results\//- /' || echo '- No HTML files')
+            $(ls -d test-results/coverage-py*/ 2>/dev/null | sed 's/test-results\//- /' | sed 's/\///' || echo '- No coverage dirs')
+            
+            Branch: ${{ github.ref_name }}
+            Workflow: ${{ github.run_id }}
+            Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
             
             git push
-            echo "✅ Reports committed and pushed to repository!"
+            echo "✅ Test reports committed and pushed!"
           fi
 
-  # Post PR comment with links to reports in repo
+  # Comment on PR with direct links to test files
   comment-pr:
     needs: test
     runs-on: ubuntu-latest
@@ -346,14 +221,22 @@ jobs:
             
             **Status:** Tests completed for all Python versions ✅
             
-            **📊 View Reports (after merge to main/staging):**
-            - 🏠 [Test Dashboard](https://github.com/${{ github.repository }}/blob/main/docs/test-reports/index.html)
-            - 📁 [Browse All Reports](https://github.com/${{ github.repository }}/tree/main/docs/test-reports)
+            **📄 Test Reports (after merge to main/staging):**
+            - [Python 3.9 Results](https://github.com/${{ github.repository }}/blob/main/test-results/test-report-py3.9.html)
+            - [Python 3.10 Results](https://github.com/${{ github.repository }}/blob/main/test-results/test-report-py3.10.html)
+            - [Python 3.11 Results](https://github.com/${{ github.repository }}/blob/main/test-results/test-report-py3.11.html)
+            - [Python 3.13 Results](https://github.com/${{ github.repository }}/blob/main/test-results/test-report-py3.13.html)
             
-            **🔗 This Workflow:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **📊 Coverage Reports:**
+            - [Python 3.9 Coverage](https://github.com/${{ github.repository }}/blob/main/test-results/coverage-py3.9/index.html)
+            - [Python 3.10 Coverage](https://github.com/${{ github.repository }}/blob/main/test-results/coverage-py3.10/index.html)
+            - [Python 3.11 Coverage](https://github.com/${{ github.repository }}/blob/main/test-results/coverage-py3.11/index.html)
+            - [Python 3.13 Coverage](https://github.com/${{ github.repository }}/blob/main/test-results/coverage-py3.13/index.html)
+            
+            **📁 Browse All:** [test-results/ directory](https://github.com/${{ github.repository }}/tree/main/test-results)
             
             ---
-            *Reports will be automatically updated in the repository when this PR is merged to main/staging*
+            *Test reports show detailed pass/fail status for each test*
             `;
             
             github.rest.issues.createComment({
