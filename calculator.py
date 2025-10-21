@@ -24,19 +24,7 @@ class Calculator:
         return result
     
     def divide(self, a, b):
-        """
-        Divide a by b
-        
-        Args:
-            a: Numerator
-            b: Denominator
-        
-        Returns:
-            Quotient of a and b
-        
-        Raises:
-            ValueError: If b is zero
-        """
+   
         if b == 0:
             raise ValueError("Cannot divide by zero")
         result = a / b
