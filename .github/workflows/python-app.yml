@@ -39,43 +39,67 @@ jobs:
             --self-contained-html \
             --junitxml=reports/test-results/junit-py${{ matrix.python-version }}.xml
       
-      - name: Upload test reports as artifacts
+      - name: Upload test reports as artifacts (backup)
         uses: actions/upload-artifact@v4
         if: always()  # Upload even if tests fail
         with:
           name: test-reports-py${{ matrix.python-version }}
           path: reports/
-          retention-days: 30
-      
-      - name: Upload coverage to Codecov (optional)
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.11'  # Only upload once
-        with:
-          file: reports/coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
+          retention-days: 7  # Shorter retention since we're committing to repo
 
-  # Generate combined HTML dashboard and store as artifact
-  create-dashboard:
+  # Generate combined HTML dashboard and commit to repository
+  commit-reports:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    
+    permissions:
+      contents: write  # Need write permission to commit
     
     steps:
       - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       
       - name: Download all test artifacts
         uses: actions/download-artifact@v4
         with:
           path: downloaded-reports/
       
+      - name: Create reports directory structure
+        run: |
+          # Create permanent reports directory in repo
+          mkdir -p docs/test-reports/coverage
+          mkdir -p docs/test-reports/test-results
+          
+          # Clear old reports
+          rm -rf docs/test-reports/coverage/*
+          rm -rf docs/test-reports/test-results/*
+      
+      - name: Copy and organize reports
+        run: |
+          # Copy coverage reports
+          for dir in downloaded-reports/test-reports-py*/; do
+              if [ -d "$dir" ]; then
+                  py_version=$(basename "$dir" | sed 's/test-reports-py//')
+                  
+                  # Copy coverage reports
+                  if [ -d "$dir/reports/coverage" ]; then
+                      cp -r "$dir/reports/coverage" "docs/test-reports/coverage/py${py_version}"
+                  fi
+                  
+                  # Copy test results
+                  if [ -f "$dir/reports/test-results/report-py${py_version}.html" ]; then
+                      cp "$dir/reports/test-results/report-py${py_version}.html" "docs/test-reports/test-results/"
+                  fi
+              fi
+          done
+      
       - name: Create comprehensive HTML dashboard
         run: |
-          mkdir -p public
-          
-          # Create main index.html with full styling
-          cat > public/index.html << 'EOF'
+          # Create main index.html in docs/test-reports/
+          cat > docs/test-reports/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -141,21 +165,15 @@ jobs:
                   }
                   .badge.success { background: #d4edda; color: #155724; }
                   .badge.info { background: #cce7ff; color: #004085; }
-                  .badge.warning { background: #fff3cd; color: #856404; }
-                  .stats { 
-                      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
-                      gap: 15px; margin: 20px 0; 
-                  }
-                  .stat-box { 
-                      text-align: center; padding: 15px; background: #f8f9fa; 
-                      border-radius: 8px; border: 2px solid #e9ecef; 
-                  }
-                  .stat-number { font-size: 2em; font-weight: bold; color: #3498db; }
-                  .stat-label { color: #6c757d; font-size: 0.9em; margin-top: 5px; }
                   .python-version { 
                       background: linear-gradient(45deg, #306998, #ffd43b); 
                       color: white; padding: 4px 8px; border-radius: 4px; 
                       font-size: 0.9em; font-weight: bold;
+                  }
+                  .file-tree {
+                      background: #f8f9fa; padding: 15px; border-radius: 6px;
+                      font-family: 'Courier New', monospace; font-size: 0.9em;
+                      margin: 15px 0;
                   }
               </style>
           </head>
@@ -170,88 +188,86 @@ jobs:
                       <strong>⏰ Generated:</strong> $(date -u +"%Y-%m-%d %H:%M:%S UTC") <br>
                       <strong>🔗 Workflow:</strong> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="color: #155724;">View Run #${{ github.run_id }}</a>
                   </div>
-          
-                  <div class="stats">
-                      <div class="stat-box">
-                          <div class="stat-number" id="python-count">4</div>
-                          <div class="stat-label">Python Versions</div>
-                      </div>
-                      <div class="stat-box">
-                          <div class="stat-number" id="test-count">✅</div>
-                          <div class="stat-label">Tests Status</div>
-                      </div>
-                      <div class="stat-box">
-                          <div class="stat-number">📊</div>
-                          <div class="stat-label">Coverage Reports</div>
-                      </div>
+
+                  <div class="file-tree">
+                      <strong>📂 Reports Location in Repository:</strong><br>
+                      docs/test-reports/<br>
+                      ├── index.html (this file)<br>
+                      ├── coverage/<br>
+                      │   ├── py3.9/index.html<br>
+                      │   ├── py3.10/index.html<br>
+                      │   ├── py3.11/index.html<br>
+                      │   └── py3.13/index.html<br>
+                      └── test-results/<br>
+                          ├── report-py3.9.html<br>
+                          ├── report-py3.10.html<br>
+                          ├── report-py3.11.html<br>
+                          └── report-py3.13.html
                   </div>
           
                   <h2>📊 Coverage Reports</h2>
-                  <div class="grid" id="coverage-grid">
+                  <div class="grid">
           EOF
           
-          # Copy coverage reports and generate cards
-          for dir in downloaded-reports/test-reports-py*/; do
+          # Add coverage cards for each Python version
+          for dir in docs/test-reports/coverage/py*/; do
               if [ -d "$dir" ]; then
-                  py_version=$(basename "$dir" | sed 's/test-reports-py//')
-                  if [ -d "$dir/reports/coverage" ]; then
-                      cp -r "$dir/reports/coverage" "public/coverage-py${py_version}"
-                      cat >> public/index.html << EOF
-                      <div class="card">
-                          <h3><span class="python-version">Python ${py_version}</span> Coverage</h3>
-                          <ul class="links">
-                              <li><a href="coverage-py${py_version}/index.html">📈 View Coverage Report</a></li>
-                              <li><a href="coverage-py${py_version}/index.html">📋 Line-by-line Analysis</a></li>
-                          </ul>
-                      </div>
+                  py_version=$(basename "$dir" | sed 's/py//')
+                  cat >> docs/test-reports/index.html << EOF
+                  <div class="card">
+                      <h3><span class="python-version">Python ${py_version}</span> Coverage</h3>
+                      <ul class="links">
+                          <li><a href="coverage/py${py_version}/index.html">📈 View Coverage Report</a></li>
+                          <li><a href="coverage/py${py_version}/index.html">📋 Line-by-line Analysis</a></li>
+                      </ul>
+                  </div>
           EOF
-                  fi
               fi
           done
           
-          cat >> public/index.html << 'EOF'
+          cat >> docs/test-reports/index.html << 'EOF'
                   </div>
           
                   <h2>🧪 Test Results</h2>
-                  <div class="grid" id="test-grid">
+                  <div class="grid">
           EOF
           
-          # Copy test reports and generate cards
-          for dir in downloaded-reports/test-reports-py*/; do
-              if [ -d "$dir" ]; then
-                  py_version=$(basename "$dir" | sed 's/test-reports-py//')
-                  if [ -f "$dir/reports/test-results/report-py${py_version}.html" ]; then
-                      cp "$dir/reports/test-results/report-py${py_version}.html" "public/"
-                      cat >> public/index.html << EOF
-                      <div class="card">
-                          <h3><span class="python-version">Python ${py_version}</span> Tests</h3>
-                          <ul class="links">
-                              <li><a href="report-py${py_version}.html">🧪 Test Results</a></li>
-                              <li><a href="report-py${py_version}.html">⏱️ Performance Metrics</a></li>
-                          </ul>
-                      </div>
+          # Add test result cards for each Python version
+          for file in docs/test-reports/test-results/report-py*.html; do
+              if [ -f "$file" ]; then
+                  py_version=$(basename "$file" | sed 's/report-py\([0-9.]*\)\.html/\1/')
+                  cat >> docs/test-reports/index.html << EOF
+                  <div class="card">
+                      <h3><span class="python-version">Python ${py_version}</span> Tests</h3>
+                      <ul class="links">
+                          <li><a href="test-results/$(basename "$file")">🧪 Test Results</a></li>
+                          <li><a href="test-results/$(basename "$file")">⏱️ Performance Metrics</a></li>
+                      </ul>
+                  </div>
           EOF
-                  fi
               fi
           done
           
-          cat >> public/index.html << EOF
+          cat >> docs/test-reports/index.html << EOF
                   </div>
           
-                  <h2>📋 Additional Resources</h2>
+                  <h2>📋 Quick Access</h2>
                   <div class="grid">
                       <div class="card">
-                          <h3>🔗 GitHub Actions</h3>
+                          <h3>🔗 Repository Links</h3>
                           <ul class="links">
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">🏃 Current Workflow Run</a></li>
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions">📋 All Workflow Runs</a></li>
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">🏃 Current Workflow</a></li>
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}/docs/test-reports">📁 Browse Reports in Repo</a></li>
+                              <li><a href="${{ github.server_url }}/${{ github.repository }}">🏠 Repository Home</a></li>
                           </ul>
                       </div>
                       <div class="card">
-                          <h3>📦 Download Reports</h3>
+                          <h3>📖 How to Use</h3>
                           <ul class="links">
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">⬇️ Download Raw Reports</a></li>
-                              <li><a href="${{ github.server_url }}/${{ github.repository }}">📁 Repository</a></li>
+                              <li>🔍 Click any report above to view details</li>
+                              <li>📊 Coverage shows which code is tested</li>
+                              <li>🧪 Test results show pass/fail status</li>
+                              <li>🔄 Reports update automatically on push</li>
                           </ul>
                       </div>
                   </div>
@@ -260,14 +276,58 @@ jobs:
           </html>
           EOF
       
-      - name: Upload combined dashboard as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-dashboard
-          path: public/
-          retention-days: 30
+      - name: Create README for reports directory
+        run: |
+          cat > docs/test-reports/README.md << 'EOF'
+          # Test Reports
+          
+          This directory contains automatically generated test reports.
+          
+          ## 📁 Structure
+          
+          - `index.html` - Main dashboard with links to all reports
+          - `coverage/` - Coverage reports for each Python version
+          - `test-results/` - Detailed test results for each Python version
+          
+          ## 🔍 How to View
+          
+          1. **Online**: Click on any `.html` file in GitHub to view
+          2. **Local**: Clone the repo and open `docs/test-reports/index.html` in your browser
+          
+          ## 🔄 Updates
+          
+          These reports are automatically updated on every push to main/staging branches.
+          
+          **Last Updated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Generated by**: [GitHub Actions Workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+      
+      - name: Commit and push reports
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add all report files
+          git add docs/test-reports/
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "📊 Update test reports
+            
+            - Generated from commit ${{ github.sha }}
+            - Branch: ${{ github.ref_name }}
+            - Workflow: ${{ github.run_id }}
+            - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            🧪 Test coverage and results available at docs/test-reports/index.html"
+            
+            git push
+            echo "✅ Reports committed and pushed to repository!"
+          fi
 
-  # Optional: Post results as PR comment
+  # Post PR comment with links to reports in repo
   comment-pr:
     needs: test
     runs-on: ubuntu-latest
@@ -277,13 +337,7 @@ jobs:
       pull-requests: write
     
     steps:
-      - name: Download test artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: test-reports-py3.11  # Use one version for summary
-          path: reports/
-      
-      - name: Parse test results and post comment
+      - name: Post PR comment
         uses: actions/github-script@v7
         with:
           script: |
@@ -292,17 +346,14 @@ jobs:
             
             **Status:** Tests completed for all Python versions ✅
             
-            **Reports:** Available as artifacts in this workflow run
+            **📊 View Reports (after merge to main/staging):**
+            - 🏠 [Test Dashboard](https://github.com/${{ github.repository }}/blob/main/docs/test-reports/index.html)
+            - 📁 [Browse All Reports](https://github.com/${{ github.repository }}/tree/main/docs/test-reports)
             
-            **How to view reports:**
-            1. Go to the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            2. Download the \`test-dashboard\` artifact
-            3. Extract and open \`index.html\` in your browser
-            
-            **Details:** [View full test run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **🔗 This Workflow:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
             ---
-            *This comment was automatically generated by GitHub Actions*
+            *Reports will be automatically updated in the repository when this PR is merged to main/staging*
             `;
             
             github.rest.issues.createComment({
