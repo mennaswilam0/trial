@@ -38,12 +38,7 @@ class Calculator:
         return result
     
     def get_history(self):
-        """
-        Get calculation history
-        
-        Returns:
-            List of calculation strings
-        """
+     
         return self.history.copy()
     
     def clear_history(self):
