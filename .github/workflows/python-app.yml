@@ -56,21 +56,11 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
 
-  # Generate combined report and deploy to GitHub Pages
-  deploy-reports:
+  # Generate combined HTML dashboard and store as artifact
+  create-dashboard:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
-    
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-      actions: read  # Added this permission
-    
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
       - uses: actions/checkout@v5
@@ -79,9 +69,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: downloaded-reports/
-      
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
       
       - name: Create comprehensive HTML dashboard
         run: |
@@ -186,7 +173,7 @@ jobs:
           
                   <div class="stats">
                       <div class="stat-box">
-                          <div class="stat-number" id="python-count">0</div>
+                          <div class="stat-number" id="python-count">4</div>
                           <div class="stat-label">Python Versions</div>
                       </div>
                       <div class="stat-box">
@@ -204,11 +191,9 @@ jobs:
           EOF
           
           # Copy coverage reports and generate cards
-          python_versions=()
           for dir in downloaded-reports/test-reports-py*/; do
               if [ -d "$dir" ]; then
                   py_version=$(basename "$dir" | sed 's/test-reports-py//')
-                  python_versions+=("$py_version")
                   if [ -d "$dir/reports/coverage" ]; then
                       cp -r "$dir/reports/coverage" "public/coverage-py${py_version}"
                       cat >> public/index.html << EOF
@@ -263,31 +248,24 @@ jobs:
                           </ul>
                       </div>
                       <div class="card">
-                          <h3>📦 Artifacts</h3>
+                          <h3>📦 Download Reports</h3>
                           <ul class="links">
                               <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">⬇️ Download Raw Reports</a></li>
                               <li><a href="${{ github.server_url }}/${{ github.repository }}">📁 Repository</a></li>
                           </ul>
                       </div>
                   </div>
-          
-                  <script>
-                      // Update stats
-                      document.getElementById('python-count').textContent = '${#python_versions[@]}';
-                  </script>
               </div>
           </body>
           </html>
           EOF
       
-      - name: Upload to GitHub Pages
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload combined dashboard as artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: test-dashboard
           path: public/
-      
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          retention-days: 30
 
   # Optional: Post results as PR comment
   comment-pr:
@@ -309,17 +287,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            
-            // You can parse the JUnit XML or coverage XML here
-            // and create a nice summary comment on the PR
-            
             const comment = `
             ## 🧪 Test Results Summary
             
             **Status:** Tests completed for all Python versions ✅
             
-            **Coverage Report:** Available in workflow artifacts
+            **Reports:** Available as artifacts in this workflow run
+            
+            **How to view reports:**
+            1. Go to the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            2. Download the \`test-dashboard\` artifact
+            3. Extract and open \`index.html\` in your browser
             
             **Details:** [View full test run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
