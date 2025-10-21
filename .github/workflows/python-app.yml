@@ -2,9 +2,7 @@ name: Auto Merge to Staging
 
 on:
   push:
-    branches:
-      - 'feature/**'
-      - 'bugfix/**'
+  pull_request:
 
 jobs:
   test:
