@@ -53,16 +53,7 @@ class Calculator:
         return result
     
     def power(self, base, exponent):
-        """
-        Raise base to the power of exponent
-        
-        Args:
-            base: Base number
-            exponent: Exponent
-        
-        Returns:
-            base raised to exponent
-        """
+      
         result = base ** exponent
         self.history.append(f"{base} ^ {exponent} = {result}")
         return result
