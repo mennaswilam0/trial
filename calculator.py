@@ -18,16 +18,7 @@ class Calculator:
         return result
     
     def multiply(self, a, b):
-        """
-        Multiply two numbers
-        
-        Args:
-            a: First number
-            b: Second number
-        
-        Returns:
-            Product of a and b
-        """
+     
         result = a * b
         self.history.append(f"{a} * {b} = {result}")
         return result
